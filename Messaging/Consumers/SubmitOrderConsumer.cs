@@ -1,4 +1,6 @@
-﻿namespace Messaging.Consumers
+﻿using System.Net.Http;
+
+namespace Messaging.Consumers
 {
     using System.Threading.Tasks;
     using Contracts;
@@ -9,10 +11,11 @@
 
     public class SubmitOrderConsumer : IConsumer<SubmitOrder>
     {
-        public Task Consume(ConsumeContext<SubmitOrder> context)
+        public async Task Consume(ConsumeContext<SubmitOrder> context)
         {
             LogContext.Info?.Log("Submitting Order: {OrderId}", context.Message.OrderId);
-
+            using (var client = new HttpClient())
+                await client.GetAsync("https://www.google.com");
             var builder = new RoutingSlipBuilder(NewId.NextGuid());
             if (!EndpointConvention.TryGetDestinationAddress<ProcessOrderArguments>(out var activityAddress))
                 throw new ConfigurationException("No endpoint address for activity");
@@ -22,12 +25,12 @@
             if (!EndpointConvention.TryGetDestinationAddress<OrderProcessed>(out var eventAddress))
                 throw new ConfigurationException("No endpoint address for activity");
 
-            builder.AddSubscription(eventAddress, RoutingSlipEvents.Completed, endpoint =>
+            await builder.AddSubscription(eventAddress, RoutingSlipEvents.Completed, endpoint =>
                 endpoint.Send<OrderProcessed>(context.Message));
 
-            context.Execute(builder.Build());
+            await context.Execute(builder.Build());
 
-            return context.Publish<OrderSubmitted>(context.Message, x => x.ResponseAddress = context.ResponseAddress);
+            await context.Publish<OrderSubmitted>(context.Message, x => x.ResponseAddress = context.ResponseAddress);
         }
     }
 }

@@ -1,3 +1,5 @@
+using System.Net;
+
 namespace ASP.NET.API
 {
     using System;
@@ -26,35 +28,39 @@ namespace ASP.NET.API
             services.AddControllers();
 
             services.AddLogging(builder =>
-                                {
-                                    builder.AddConsole();
-                                    builder.SetMinimumLevel(LogLevel.Trace);
-                                });
+            {
+                builder.AddConsole();
+                builder.SetMinimumLevel(LogLevel.Trace);
+            });
 
             services.ConfigureTelemetryModule<DependencyTrackingTelemetryModule>((m, o) =>
-                                                                                 {
-                                                                                     m.IncludeDiagnosticSourceActivities.Remove("Microsoft.Azure.ServiceBus");
-                                                                                     m.IncludeDiagnosticSourceActivities.Remove("Microsoft.Azure.EventHubs");
-                                                                                     m.IncludeDiagnosticSourceActivities.Add("MassTransit");
-                                                                                 });
+            {
+                m.IncludeDiagnosticSourceActivities.Remove("Microsoft.Azure.ServiceBus");
+                m.IncludeDiagnosticSourceActivities.Remove("Microsoft.Azure.EventHubs");
+                m.IncludeDiagnosticSourceActivities.Add("MassTransit");
+            });
 
             services.AddApplicationInsightsTelemetry(options =>
-                                                     {
-                                                         options.EnableAdaptiveSampling = false;
-                                                         options.InstrumentationKey     = Configuration["ApplicationInsightsInstrumentationKey"];
-                                                     });
+            {
+                options.EnableAdaptiveSampling = false;
+                options.InstrumentationKey = Configuration["ApplicationInsightsInstrumentationKey"];
+            });
 
             services.AddMassTransit(x =>
-                                    {
-                                        x.AddBus(provider => Bus.Factory.CreateUsingAzureServiceBus(cfg =>
-                                                                                                    {
-                                                                                                        var host = cfg.Host(Configuration["AzureServiceBusConnectionString"],
-                                                                                                                            h =>
-                                                                                                                            {
-                                                                                                                                h.OperationTimeout = TimeSpan.FromSeconds(30);
-                                                                                                                            });
-                                                                                                    }));
-                                    });
+            {
+                x.AddBus(provider => Bus.Factory.CreateUsingRabbitMq(cfg =>
+                {
+                    var uri = new Uri(Configuration["RabbitMQ"]);
+                    var usernameAndPassword = uri.UserInfo.Split(":");
+
+                    cfg.Host(uri,
+                        h =>
+                        {
+                            h.Username(WebUtility.UrlDecode(usernameAndPassword[0]));
+                            h.Password(WebUtility.UrlDecode(usernameAndPassword[1]));
+                        });
+                }));
+            });
 
             services.AddHostedService<BusService>();
 
@@ -72,10 +78,7 @@ namespace ASP.NET.API
             app.UseOpenApi();
             app.UseSwaggerUi3();
 
-            app.UseEndpoints(endpoints =>
-                             {
-                                 endpoints.MapControllers();
-                             });
+            app.UseEndpoints(endpoints => { endpoints.MapControllers(); });
         }
     }
 }
